@@ -1,9 +1,9 @@
-# GTA VI launch-day Twitch viewers forecast
+# Forecasting GTA VI's launch-day Twitch audience
 
-Forecasts how many people watch Grand Theft Auto VI live on Twitch in each
-hour of its release day (2026-11-19 UTC), hours 2–24, as five quantiles per
-hour — from hour 1's print and the launch-day shapes of past console-only
-game launches.
+How many people will watch Grand Theft Auto VI on Twitch in each hour of
+its release day? This entry predicts hours 2–24 of that day as five
+quantiles per hour, given only hour 1's audience and a set of earlier
+game launches to learn the day's shape from.
 
 [![bounty](https://make.fun/badge/gta6-twitch-ccu-forecast-01.svg)](https://make.fun/bounty/gta6-twitch-ccu-forecast-01)
 [![rank](https://make.fun/badge/gta6-twitch-ccu-forecast-01/ninochaan/gta6-twitch-ccu-forecast-01/rank.svg)](https://make.fun/bounty/gta6-twitch-ccu-forecast-01)
@@ -11,28 +11,39 @@ game launches.
 
 Entry for the [gta6-twitch-ccu-forecast-01 bounty](https://make.fun/bounty/gta6-twitch-ccu-forecast-01).
 
-## Model
+## How it works
 
-`main.py` (Python 3.13, standard library only, deterministic, no network):
+`main.py` is a single self-contained program (Python 3.13, standard
+library only, deterministic, no network access):
 
-1. Builds a pool of past console-only launches (platforms mention no PC,
-   real launches with a valid hour-1 print) and, per hour, their log-ratio
-   `ln(viewers_h / viewers_1)` on release day.
-2. Per hour, a plain OLS of log-ratio on centered `ln(p1)`, slope shrunk
-   ×0.8 and clamped to [-0.5, 0]; spread from the IQR of the residuals /
-   1.349, floored at 0.15 and capped at 1.5. Quantiles:
-   `q_tau = p1 × exp(centre + z_tau × sigma)`.
-3. Falls back to all comparables when a pool hour has fewer than 5 members,
-   and to a widening persistence baseline when still fewer than 3. A bad
-   case still writes a valid baseline forecast instead of crashing.
+1. **Pool.** Every comparable that is a genuine launch with a positive
+   first-hour audience becomes an entry holding its release-day curve as
+   log ratios to hour 1, plus its console flag and unlock kind.
+2. **Centre.** Two centres are averaged in log space: a per-hour least
+   squares fit over the console-only entries (slope shrunk ×0.8, clamped
+   to [-0.5, 0]), and a similarity-weighted median of slope-adjusted log
+   ratios over the whole pool, where similarity decays with log-size
+   distance and with console/unlock mismatches.
+3. **Calibration.** The ensemble is refitted on each pool entry, and the
+   residuals of the eight entries most similar to the target become
+   weighted empirical quantile offsets per hour (neighbouring hours
+   pooled), so the intervals are as wide as similar launches actually
+   were — no wider, no narrower.
+4. **Fallbacks.** Scarce residuals or a malformed case degrade
+   gracefully to a persistence forecast whose spread widens like
+   0.15·sqrt(h − 1) in log space; the program never crashes.
 
-Leave-one-out over the console-only comparables in practice case p00:
-mean pinball loss ≈ 0.17, vs ≈ 0.32 for the persistence baseline on the
-same set (house baseline ≈ 0.387 on the full practice).
+Validation by leave-one-launch-out over the practice cases: mean pinball
+loss ≈ 0.16 on the large-console protocol, against ≈ 0.32 for the
+persistence baseline on the same targets.
 
-## Run
+## Running it
 
 ```sh
 mkdir -p out
 MAKEFUN_INPUT_DIR=input MAKEFUN_OUTPUT_DIR=out python3 main.py
 ```
+
+Each `<id>.in` case in the input directory produces a matching
+`<id>.out` file with one row per forecast hour and five quantiles per
+row.
